@@ -1261,11 +1261,6 @@ static void free_pcppages_bulk(struct zone *zone, int count,
 	struct page *page, *tmp;
 	LIST_HEAD(head);
 
-	/*
-	 * Ensure proper count is passed which otherwise would stuck in the
-	 * below while (list_empty(list)) loop.
-	 */
-	count = min(pcp->count, count);
 	while (count) {
 		struct list_head *list;
 
@@ -3038,7 +3033,7 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn)
 {
 	struct zone *zone = page_zone(page);
 	struct per_cpu_pages *pcp;
-	int migratetype;
+	int migratetype, high, batch;
 
 	migratetype = get_pcppage_migratetype(page);
 	__count_vm_event(PGFREE);
@@ -3061,10 +3056,10 @@ static void free_unref_page_commit(struct page *page, unsigned long pfn)
 	pcp = &this_cpu_ptr(zone->pageset)->pcp;
 	list_add(&page->lru, &pcp->lists[migratetype]);
 	pcp->count++;
-	if (pcp->count >= pcp->high) {
-		unsigned long batch = READ_ONCE(pcp->batch);
+	high = READ_ONCE(pcp->high);
+	batch = READ_ONCE(pcp->batch);
+	if ((high > batch) && pcp->count >= high)
 		free_pcppages_bulk(zone, batch, pcp);
-	}
 }
 
 /*
